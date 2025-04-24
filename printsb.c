@@ -17,7 +17,6 @@ int main(int argc, char *argv[])
 		perror("fopen");
 		return 1;
 	}
-
 	if (get_superblock(f, &sb))
 		return 1;
 
