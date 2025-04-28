@@ -213,23 +213,23 @@ int get_superblock(FILE *f, struct superblock *out)
 
 // Fetch the data from the specified block into the provided buffer.
 // Return 0 on success, 1 on error.
-int get_block_data(struct superblock *sb, int blk, char *out)
-{
-	int bs = blocksize(sb);//get block size
+	int get_block_data(struct superblock *sb, int blk, char *out)
+	{
+		int bs = blocksize(sb);//get block size
 
-	//seek to block
-	if(fseek(sb->file, bs*blk, SEEK_SET) == -1){
-		perror("fseek");
-		return 1;
-	}
+		//seek to block
+		if(fseek(sb->file, bs*blk, SEEK_SET) == -1){
+			perror("fseek");
+			return 1;
+		}
 
-	//read to buffer
-	if(fread(out, bs, 1, sb->file)  != 1){
-		perror("fread");
-		return 1;
+		//read to buffer
+		if(fread(out, bs, 1, sb->file)  != 1){
+			perror("fread");
+			return 1;
+		}
+		return 0;
 	}
-	return 0;
-}
 
 // Write the data from the specified block to standard output.
 // Return 0 on success, 1 on error.
@@ -348,25 +348,128 @@ int get_inode(struct superblock *sb, int ino, struct inode *out)
 // Return 0 on success, 1 on error.
 int get_inode_block(struct superblock *sb, struct inode *i, uint32_t n, char *out)
 {
+	//0-11 is direct
+	int blockno;
+	char indir_out[blocksize(sb)];
+	if(n < 12){
+		blockno = i->i_block_d[n];
+	}
+	else if(n < 268){
+		//get singly indirect
+		get_block_data(sb, i->i_block_1i, indir_out);
+		byteswap_iblock(sb,indir_out);
+
+		//get byte blockno
+		blockno = ((uint32_t *) indir_out)[n - 12]; 
+	}
+	else if(n < 65804){
+		//get doubly indirect first layer
+		get_block_data(sb, i->i_block_2i, indir_out);
+		byteswap_iblock(sb,indir_out);
+
+		//get second layer
+		n -= 268;
+		char indir_out2[blocksize(sb)];
+
+		get_block_data(sb, ((uint32_t *)indir_out)[n/256], indir_out2);
+		byteswap_iblock(sb, indir_out2);
+
+		blockno = ((uint32_t *)indir_out2)[n%256];
+	}
+	else{
+		//get triple indirect first layer
+		get_block_data(sb, i->i_block_3i, indir_out);
+		byteswap_iblock(sb,indir_out);
+
+		//get second layer
+		n -= 65804; //NEED TO CHANGE TO NEXT RANGE
+		char indir_out2[blocksize(sb)];
+
+		get_block_data(sb, ((uint32_t *)indir_out)[n/(256*256)], indir_out2);
+		byteswap_iblock(sb, indir_out2);
+
+		//get third layer
+		char indir_out3[blocksize(sb)];
+
+		get_block_data(sb, ((uint32_t *) indir_out2)[(n/256) % 256], indir_out3);
+		byteswap_iblock(sb, indir_out3);
+
+		//get blockno
+		blockno = ((uint32_t *) indir_out3)[n % 256];
+	}
+
+	//seek to blockno and read
+	get_block_data(sb, blockno, out);
+	
 	return 0;
 }
 
+//bitmap header is 0x42 0x4D
 // Return 1 if a block is free, 0 if it is not, and -1 on error
 int is_block_free(struct superblock *sb, int blk)
 {
-	return 0;
+	struct bgdesc *bg = malloc(sizeof(struct bgdesc));
+	
+	//get block number of bitmap
+	if(get_bgdesc(sb, bg_from_blk(sb, blk), bg)){
+		perror("get bgdesc");
+		free(bg);
+		return -1;
+	}
+
+	// //load block
+	char *out = malloc(blocksize(sb));
+	if(get_block_data(sb, bg->bg_block_bitmap, out)){
+		perror("get block data");
+		free(bg);
+		free(out);
+		return -1;
+	}
+
+
+	// shift to find block in bitmap
+	int idx = blk_within_bg(sb, blk);
+    int byte = idx / 8;
+    int bit  = idx % 8;
+    int allocated = (out[byte] >> bit) & 1; //1 - allocated; 0 - free
+
+	free(bg);
+	free(out);
+	return !allocated;
+	
 }
 
 // Return 1 if a block appears to be an indirect block, 0 if it does not, and
 // -1 on error.
 int looks_indirect(struct superblock *sb, char *block)
 {
-	return 0;
+	//all of the entries need to be less than block count
+	//should be 4 bytes to store each block pointer
+	//uint32_t *block_ptr = (uint32_t*) block; 
+	for(int i = 0; i < blocksize(sb); i+= sizeof(uint32_t)){
+		if((uint32_t)block[i] >= sb->s_blocks_count)
+			return 0;
+	}
+
+	return 1;
 }
 
 // Return 1 if a block appears to be a doubly-indirect block, 0 if it does not,
 // and -1 on error.
 int looks_2indirect(struct superblock *sb, char *block)
 {
-	return 0;
+	//uint32_t *block_ptr = (uint32_t*) block; 
+	for(int i = 0; i < blocksize(sb); i+= sizeof(uint32_t)){
+		char blocksi[blocksize(sb)];
+		
+		//make sure valid block
+		if((uint32_t)block[i] >= sb->s_blocks_count)
+			return 0;
+		
+		//check buffer
+		get_block_data(sb, block[i] ,blocksi);
+		if(!looks_indirect(sb, blocksi))
+			return 0;
+	}
+	return 1;
 }
