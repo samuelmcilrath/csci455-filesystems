@@ -445,9 +445,9 @@ int looks_indirect(struct superblock *sb, char *block)
 {
 	//all of the entries need to be less than block count
 	//should be 4 bytes to store each block pointer
-	//uint32_t *block_ptr = (uint32_t*) block; 
-	for(int i = 0; i < blocksize(sb); i+= sizeof(uint32_t)){
-		if((uint32_t)block[i] >= sb->s_blocks_count)
+	uint32_t *block_ptr = (uint32_t*) block; 
+	for(int i = 0; i < blocksize(sb)/sizeof(uint32_t); i++){
+		if(block_ptr[i] >= sb->s_blocks_count)
 			return 0;
 	}
 
@@ -458,16 +458,16 @@ int looks_indirect(struct superblock *sb, char *block)
 // and -1 on error.
 int looks_2indirect(struct superblock *sb, char *block)
 {
-	//uint32_t *block_ptr = (uint32_t*) block; 
-	for(int i = 0; i < blocksize(sb); i+= sizeof(uint32_t)){
+	uint32_t *block_ptr = (uint32_t*) block; 
+	for(int i = 0; i < blocksize(sb)/sizeof(uint32_t); i++){
 		char blocksi[blocksize(sb)];
 		
 		//make sure valid block
-		if((uint32_t)block[i] >= sb->s_blocks_count)
+		if(block_ptr[i] >= sb->s_blocks_count)
 			return 0;
 		
 		//check buffer
-		get_block_data(sb, block[i] ,blocksi);
+		get_block_data(sb, block_ptr[i] ,blocksi);
 		if(!looks_indirect(sb, blocksi))
 			return 0;
 	}
