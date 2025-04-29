@@ -306,7 +306,7 @@ int get_inode(struct superblock *sb, int ino, struct inode *out)
 	// Code here...
 
 	//You will first need to determine which block 
-	//group an inode belongs to, then find that block group’s inode table, then get the correct
+	//group an inode belongs to, then find that block group's inode table, then get the correct
 	//inode. Your utility functions will help here.
 	
 	//get block group
@@ -417,26 +417,24 @@ int is_block_free(struct superblock *sb, int blk)
 		return -1;
 	}
 
-	// //load block
+	//load block
 	char *out = malloc(blocksize(sb));
-	if(get_block_data(sb, bg->bg_block_bitmap, out)){
+	if(get_block_data(sb, bg->bg_block_bitmap - 1, out)){
 		perror("get block data");
 		free(bg);
 		free(out);
 		return -1;
 	}
 
-
 	// shift to find block in bitmap
 	int idx = blk_within_bg(sb, blk);
     int byte = idx / 8;
     int bit  = idx % 8;
     int allocated = (out[byte] >> bit) & 1; //1 - allocated; 0 - free
-
+    
 	free(bg);
 	free(out);
 	return !allocated;
-	
 }
 
 // Return 1 if a block appears to be an indirect block, 0 if it does not, and
@@ -445,31 +443,47 @@ int looks_indirect(struct superblock *sb, char *block)
 {
 	//all of the entries need to be less than block count
 	//should be 4 bytes to store each block pointer
+	byteswap_iblock(sb, block);
 	uint32_t *block_ptr = (uint32_t*) block; 
+	int nonzero = 0;
+
 	for(int i = 0; i < blocksize(sb)/sizeof(uint32_t); i++){
+
+		if(block_ptr[i] == 0)
+			continue;
 		if(block_ptr[i] >= sb->s_blocks_count)
 			return 0;
+
+		nonzero = 1;
 	}
 
-	return 1;
+	return nonzero;
 }
 
 // Return 1 if a block appears to be a doubly-indirect block, 0 if it does not,
 // and -1 on error.
 int looks_2indirect(struct superblock *sb, char *block)
 {
+	byteswap_iblock(sb, block);
 	uint32_t *block_ptr = (uint32_t*) block; 
+	int nonzero = 0;
+
 	for(int i = 0; i < blocksize(sb)/sizeof(uint32_t); i++){
 		char blocksi[blocksize(sb)];
 		
-		//make sure valid block
+		if(block_ptr[i] == 0)
+			continue;
+		//make sure valid block 
 		if(block_ptr[i] >= sb->s_blocks_count)
 			return 0;
 		
-		//check buffer
-		get_block_data(sb, block_ptr[i] ,blocksi);
+		//check next layer
+		get_block_data(sb, block_ptr[i] ,blocksi); //ERR CHECK LATR
+		byteswap_iblock(sb, blocksi);
 		if(!looks_indirect(sb, blocksi))
 			return 0;
+
+		nonzero = 1;
 	}
-	return 1;
+	return nonzero;
 }
