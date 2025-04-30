@@ -10,8 +10,8 @@ int main(int argc, char *argv[])
 	struct superblock sb;
 
 	// Fill in the number of required arguments and usage here
-	if (argc <= 100) {
-		printf("Usage: %s <image file> ARGUMENTS\n", argv[0]);
+	if (argc < 4) {
+		printf("Usage: %s <image file> <starting direct block> <dbl indr block>\n", argv[0]);
 		return 1;
 	}
 
@@ -24,11 +24,27 @@ int main(int argc, char *argv[])
 	if (get_superblock(f, &sb))
 		return 1;
 
-	// Code here...
 	//need to fill in the inode
+	long int dir_block = strtol(argv[2], NULL, 0);
 	struct inode *pwd_node = malloc(sizeof(struct inode));
-	
+	memset(pwd_node, 0, sizeof(struct inode));  // Initialize to zero
 
+	pwd_node->i_size = 0x001978DA; //these are the bytes following the magic #
+
+
+	//we need the direct blocks
+	for(int i = 0; i < 12; i++){
+		pwd_node->i_block_d[i] = dir_block++;
+	}
+
+	//individual block 
+	pwd_node->i_block_1i = 6043;
+
+	//double block
+	pwd_node->i_block_2i = strtol(argv[3], NULL, 0);
+	
+	print_inode_data(&sb, pwd_node);
+	free(pwd_node);
 	fclose(f);
 	return 0;
 }
