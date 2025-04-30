@@ -255,13 +255,13 @@ int print_block_data(struct superblock *sb, int blk)
 // Return the number of the block group that a certain block belongs to.
 int bg_from_blk(struct superblock *sb, int blk)
 {	
-	return blk / sb->s_blocks_per_group;
+	return (blk - sb->s_first_data_block) / (sb->s_blocks_per_group);
 }
 
 // Return the index of a block within its block group.
 int blk_within_bg(struct superblock *sb, int blk)
 {
-	return blk % sb->s_blocks_per_group;
+	return (blk - sb->s_first_data_block) % (sb->s_blocks_per_group);
 }
 
 // Return the number of the block group that a certain inode belongs to.
@@ -419,7 +419,7 @@ int is_block_free(struct superblock *sb, int blk)
 
 	//load block
 	char *out = malloc(blocksize(sb));
-	if(get_block_data(sb, bg->bg_block_bitmap - 1, out)){
+	if(get_block_data(sb, bg->bg_block_bitmap , out)){
 		perror("get block data");
 		free(bg);
 		free(out);
