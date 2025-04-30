@@ -25,6 +25,9 @@ int main(int argc, char *argv[])
 		return 1;
 
 	// Code here...
+	//need to fill in the inode
+	struct inode *pwd_node = malloc(sizeof(struct inode));
+	
 
 	fclose(f);
 	return 0;
